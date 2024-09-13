@@ -53,7 +53,7 @@ pub async fn handle(
             "tcp_rtt_ms": tcp_rtt_ms,
             "tcp_rtt_dev_ms": tcp_rtt_dev_ms,
             "http2_rtt_ms": tls_rtts,
-            "http2_rtt_dev_ms": tls_rtt_min,
+            "http2_rtt_min_ms": tls_rtt_min,
         })
             .to_string()
             .into(),
