@@ -37,8 +37,8 @@ pub async fn handle(
         .body(())?;
     let mut send = respond.send_response(header_frame, false)?;
 
-    let (tls_rtts, tls_rtt_dev) = tls_rtt(ping_pong).await?;
-    let tls_rtt_min = detect_anomalies(&tls_rtts);
+    let (mut tls_rtts, tls_rtt_dev) = tls_rtt(ping_pong).await?;
+    let tls_rtt_min = detect_anomalies(&mut tls_rtts);
     let (tcp_rtt_ms, tcp_rtt_dev_ms) = get_tcp_rtt(raw_fd);
 
     // TODO: type convert
@@ -80,7 +80,7 @@ async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<f32>, f32)> {
 #[tracing::instrument]
 fn detect_anomalies(data: &mut [f32]) -> f32 {
     data.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let adjusted_rtt_mean = data.iter().rev().skip(3).sum() / data.len() - 3;
+    let adjusted_rtt_mean = data.iter().rev().skip(3).sum::<f32>() / (data.len() - 3) as f32;
     info!(?data, ?adjusted_rtt_mean, "detect_anomalies");
     adjusted_rtt_mean
 }
