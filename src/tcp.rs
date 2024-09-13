@@ -120,7 +120,7 @@ pub fn get_tcp_rtt(raw_fd: i32) -> (f32, f32) {
         )
     };
 
-    (tcp_info.tcpi_rtt/1000, tcp_info.tcpi_rttvar/1000)
+    (tcp_info.tcpi_rtt as f32 /1000.0_f32, tcp_info.tcpi_rttvar as f32 /1000_f32)
 }
 
 #[cfg(target_os = "macos")]
