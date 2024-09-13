@@ -65,7 +65,7 @@ pub async fn handle(
 async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<f32>, f32)> {
     let mut ping = ping_pong.lock().await;
     let mut tls_rtts = vec![];
-    for index in 0..10 {
+    for index in 0..5 {
         let instant = tokio::time::Instant::now();
         ping.ping(Ping::opaque()).await?;
         let duration = instant.elapsed().as_micros() as f32 / 1000_f32;
