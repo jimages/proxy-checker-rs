@@ -37,19 +37,23 @@ pub async fn handle(
         .body(())?;
     let mut send = respond.send_response(header_frame, false)?;
 
-    let tls_rtts = tls_rtt(ping_pong).await?;
+    let (tls_rtts, tls_rtt_dev) = tls_rtt(ping_pong).await?;
     let (tls_rtt, _std_dev, anomalies) = detect_anomalies(&tls_rtts, 0.5);
-    let tcp_rtt = get_tcp_rtt(raw_fd);
+    let (tcp_rtt_ms, tcp_rtt_dev_ms) = get_tcp_rtt(raw_fd);
 
     // TODO: type convert
-    let is_proxy = tls_rtt - tcp_rtt as f64 > ARGS.duration as f64 * 1000.0;
+    let is_proxy = tls_rtt - tcp_rtt_ms as f64 > ARGS.duration as f64 * 1000.0;
 
-    info!(?is_proxy, ?tcp_rtt, ?tls_rtt, ?anomalies, "result");
+    info!(?is_proxy, ?tcp_rtt_ms, ?tls_rtt, ?anomalies, "result");
 
     Ok(send.send_data(
         json!({
             "is_proxy": is_proxy,
             "ip": addr.ip().to_string(),
+            "tcp_rtt_ms": tcp_rtt_ms,
+            "tcp_rtt_dev_ms": tcp_rtt_dev_ms,
+            "tls_rtt": tls_rtt,
+            "tls_rtt_dev": tls_rtt_dev,
         })
         .to_string()
         .into(),
@@ -58,7 +62,7 @@ pub async fn handle(
 }
 
 #[tracing::instrument(skip_all)]
-async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<Vec<i32>> {
+async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<i32>, i32)> {
     let mut ping = ping_pong.lock().await;
     let mut tls_rtts = vec![];
     for index in 0..10 {
@@ -68,7 +72,9 @@ async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<Vec<i32>> {
         debug!(?duration, %index, "ping");
         tls_rtts.push(duration as i32);
     }
-    Ok(tls_rtts)
+    let tls_rtt = tls_rtts.iter().sum::<i32>() as f64 / tls_rtts.len() as f64;
+    let tls_rtt_dev = calculate_variance(&tls_rtts, tls_rtt).sqrt() as i32;
+    Ok((tls_rtts, tls_rtt_dev))
 }
 
 #[tracing::instrument]

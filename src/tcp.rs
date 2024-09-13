@@ -1,3 +1,5 @@
+use std::alloc::Layout;
+#[cfg(target_os = "linux")]
 use libc::{self, __u16, __u32, __u64, __u8};
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
@@ -23,6 +25,7 @@ pub async fn handle(conn: TcpStream, acceptor: TlsAcceptor, addr: SocketAddr) {
 
 #[repr(C)]
 #[derive(Default)]
+#[cfg(target_os = "linux")]
 pub struct TcpInfo {
     pub tcpi_state: __u8,
     pub tcpi_ca_state: __u8,
@@ -101,7 +104,9 @@ pub struct TcpInfo {
     pub tcpi_total_rto_time: __u32,
 }
 
-pub fn get_tcp_rtt(raw_fd: i32) -> u32 {
+
+#[cfg(target_os = "linux")]
+pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
     let mut tcp_info = TcpInfo::default();
     let mut tcp_info_len = std::mem::size_of::<TcpInfo>() as u32;
 
@@ -115,5 +120,30 @@ pub fn get_tcp_rtt(raw_fd: i32) -> u32 {
         )
     };
 
-    tcp_info.tcpi_rtt
+    (tcp_info.tcpi_rtt, tcp_info.tcpi_rttvar)
 }
+
+#[cfg(target_os = "macos")]
+pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
+    let mut tcp_info_len = std::mem::size_of::<libc::tcp_connection_info> as u32;
+    let mut tcp_info=
+        unsafe {
+            std::alloc::alloc(Layout::new::<libc::tcp_connection_info>()) as *mut libc::tcp_connection_info
+        };
+
+    let _ret = unsafe {
+        libc::getsockopt(
+            raw_fd,
+            libc::IPPROTO_TCP,
+            libc::TCP_CONNECTION_INFO,
+            &mut tcp_info as *mut _ as *mut libc::c_void,
+            &mut tcp_info_len,
+        )
+    };
+    let tcp_info = unsafe {
+        &*tcp_info
+    };
+
+    (tcp_info.tcpi_srtt, tcp_info.tcpi_rttvar)
+}
+
