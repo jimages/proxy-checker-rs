@@ -79,11 +79,12 @@ async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<f32>, f32)> {
 
 #[tracing::instrument]
 fn detect_anomalies(data: &[f32]) -> f32 {
-    let min = data.iter().min_by(
-        |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
-    ).unwrap_or(&f32::INFINITY);
-    info!(?data, ?min);
-    *min
+    let dev = calculate_variance(data, data.iter().sum::<f32>() / data.len() as f32).sqrt();
+    let mean = data.iter().sum::<f32>() / data.len() as f32;
+    let adjusted_rtt = data.iter().filter(|&&x| (x - mean).abs() < 0.5f32 * dev).copied().collect::<Vec<f32>>();
+    let adjusted_rtt_mean = adjusted_rtt.iter().sum::<f32>() / adjusted_rtt.len() as f32;
+    info!(?data, ?adjusted_rtt, ?adjusted_rtt_mean, ?dev, "detect_anomalies");
+    adjusted_rtt_mean
 }
 
 fn calculate_variance(data: &[f32], mean: f32) -> f32 {
