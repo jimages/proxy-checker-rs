@@ -52,7 +52,7 @@ pub async fn handle(
             "ip": addr.ip().to_string(),
             "tcp_rtt_ms": tcp_rtt_ms,
             "tcp_rtt_dev_ms": tcp_rtt_dev_ms,
-            "http2_rtt_ms": tls_rtt / 1000.0,
+            "http2_rtt_ms": tls_rtt,
             "http2_rtt_dev_ms": tls_rtt_dev,
         })
         .to_string()
