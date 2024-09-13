@@ -42,7 +42,7 @@ pub async fn handle(
     let (tcp_rtt_ms, tcp_rtt_dev_ms) = get_tcp_rtt(raw_fd);
 
     // TODO: type convert
-    let is_proxy = tls_rtt - tcp_rtt_ms as f64 > ARGS.duration as f64 * 1000.0;
+    let is_proxy = tls_rtt - tcp_rtt_ms as f32 > 2f32 * tcp_rtt_dev_ms;
 
     info!(?is_proxy, ?tcp_rtt_ms, ?tls_rtt, ?anomalies, "result");
 
@@ -53,7 +53,7 @@ pub async fn handle(
             "tcp_rtt_ms": tcp_rtt_ms,
             "tcp_rtt_dev_ms": tcp_rtt_dev_ms,
             "http2_rtt_ms": tls_rtt / 1000.0,
-            "http2_rtt_dev_ms": tls_rtt_dev as f32 / 1000.0,
+            "http2_rtt_dev_ms": tls_rtt_dev,
         })
         .to_string()
         .into(),
@@ -62,38 +62,38 @@ pub async fn handle(
 }
 
 #[tracing::instrument(skip_all)]
-async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<i32>, i32)> {
+async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<f32>, f32)> {
     let mut ping = ping_pong.lock().await;
     let mut tls_rtts = vec![];
     for index in 0..10 {
         let instant = tokio::time::Instant::now();
         ping.ping(Ping::opaque()).await?;
-        let duration = instant.elapsed().as_micros();
+        let duration = instant.elapsed().as_micros() as f32 / 1000_f32;
         debug!(?duration, %index, "ping");
-        tls_rtts.push(duration as i32);
+        tls_rtts.push(duration);
     }
-    let tls_rtt = tls_rtts.iter().sum::<i32>() as f64 / tls_rtts.len() as f64;
-    let tls_rtt_dev = calculate_variance(&tls_rtts, tls_rtt).sqrt() as i32;
+    let tls_rtt = tls_rtts.iter().sum::<f32>()/ tls_rtts.len() as f32;
+    let tls_rtt_dev = calculate_variance(&tls_rtts, tls_rtt).sqrt() as f32;
     Ok((tls_rtts, tls_rtt_dev))
 }
 
 #[tracing::instrument]
-fn detect_anomalies(data: &[i32], threshold: f64) -> (f64, f64, Vec<i32>) {
-    let sum: i32 = data.iter().sum();
-    let mean = sum as f64 / data.len() as f64;
+fn detect_anomalies(data: &[f32], threshold: f32) -> (f32, f32, Vec<f32>) {
+    let sum: f32 = data.iter().sum();
+    let mean = sum / data.len() as f32;
 
     let variance = calculate_variance(data, mean);
     let std_dev = variance.sqrt();
 
-    let anomalies: Vec<i32> = data
+    let anomalies: Vec<f32> = data
         .iter()
-        .filter(|&&x| (x as f64 - mean).abs() > threshold * std_dev)
+        .filter(|&&x| (x - mean).abs() > threshold * std_dev)
         .copied()
         .collect();
 
     let non_anomalies_count = data.len() - anomalies.len();
     let adjusted_mean = if non_anomalies_count > 0 {
-        (sum - anomalies.iter().sum::<i32>()) as f64 / non_anomalies_count as f64
+        (sum - anomalies.iter().sum::<f32>()) / non_anomalies_count as f32
     } else {
         mean
     };
@@ -103,6 +103,6 @@ fn detect_anomalies(data: &[i32], threshold: f64) -> (f64, f64, Vec<i32>) {
     (adjusted_mean, std_dev, anomalies)
 }
 
-fn calculate_variance(data: &[i32], mean: f64) -> f64 {
-    data.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / data.len() as f64
+fn calculate_variance(data: &[f32], mean: f32) -> f32 {
+    data.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / data.len() as f32
 }
