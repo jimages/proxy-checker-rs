@@ -100,7 +100,7 @@ fn detect_anomalies(data: &[f32], threshold: f32) -> (f32, f32, Vec<f32>) {
 
     info!(?data, ?adjusted_mean, ?std_dev, ?anomalies);
 
-    (adjusted_mean, std_dev, anomalies)
+    (mean, std_dev, anomalies)
 }
 
 fn calculate_variance(data: &[f32], mean: f32) -> f32 {
