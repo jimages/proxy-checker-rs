@@ -38,13 +38,13 @@ pub async fn handle(
     let mut send = respond.send_response(header_frame, false)?;
 
     let (tls_rtts, tls_rtt_dev) = tls_rtt(ping_pong).await?;
-    let (tls_rtt, _std_dev, anomalies) = detect_anomalies(&tls_rtts, 0.5);
+    let tls_rtt_min = detect_anomalies(&tls_rtts);
     let (tcp_rtt_ms, tcp_rtt_dev_ms) = get_tcp_rtt(raw_fd);
 
     // TODO: type convert
-    let is_proxy = tls_rtt - tcp_rtt_ms as f32 > 2f32 * tcp_rtt_dev_ms;
+    let is_proxy = tls_rtt_min - tcp_rtt_ms as f32 > 2f32 * tcp_rtt_dev_ms;
 
-    info!(?is_proxy, ?tcp_rtt_ms, ?tls_rtt, ?anomalies, "result");
+    info!(?is_proxy, ?tcp_rtt_ms, ?tls_rtts, ?tls_rtt_min, "result");
 
     Ok(send.send_data(
         json!({
@@ -52,11 +52,11 @@ pub async fn handle(
             "ip": addr.ip().to_string(),
             "tcp_rtt_ms": tcp_rtt_ms,
             "tcp_rtt_dev_ms": tcp_rtt_dev_ms,
-            "http2_rtt_ms": tls_rtt,
-            "http2_rtt_dev_ms": tls_rtt_dev,
+            "http2_rtt_ms": tls_rtts,
+            "http2_rtt_dev_ms": tls_rtt_min,
         })
-        .to_string()
-        .into(),
+            .to_string()
+            .into(),
         true,
     )?)
 }
@@ -72,35 +72,18 @@ async fn tls_rtt(ping_pong: Arc<Mutex<PingPong>>) -> Result<(Vec<f32>, f32)> {
         debug!(?duration, %index, "ping");
         tls_rtts.push(duration);
     }
-    let tls_rtt = tls_rtts.iter().sum::<f32>()/ tls_rtts.len() as f32;
+    let tls_rtt = tls_rtts.iter().sum::<f32>() / tls_rtts.len() as f32;
     let tls_rtt_dev = calculate_variance(&tls_rtts, tls_rtt).sqrt() as f32;
     Ok((tls_rtts, tls_rtt_dev))
 }
 
 #[tracing::instrument]
-fn detect_anomalies(data: &[f32], threshold: f32) -> (f32, f32, Vec<f32>) {
-    let sum: f32 = data.iter().sum();
-    let mean = sum / data.len() as f32;
-
-    let variance = calculate_variance(data, mean);
-    let std_dev = variance.sqrt();
-
-    let anomalies: Vec<f32> = data
-        .iter()
-        .filter(|&&x| (x - mean).abs() > threshold * std_dev)
-        .copied()
-        .collect();
-
-    let non_anomalies_count = data.len() - anomalies.len();
-    let adjusted_mean = if non_anomalies_count > 0 {
-        (sum - anomalies.iter().sum::<f32>()) / non_anomalies_count as f32
-    } else {
-        mean
-    };
-
-    info!(?data, ?adjusted_mean, ?std_dev, ?anomalies);
-
-    (adjusted_mean, std_dev, anomalies)
+fn detect_anomalies(data: &[f32]) -> f32 {
+    let min = data.iter().min_by(
+        |a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal),
+    ).unwrap_or(&f32::INFINITY);
+    info!(?data, ?min);
+    *min
 }
 
 fn calculate_variance(data: &[f32], mean: f32) -> f32 {
