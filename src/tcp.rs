@@ -106,7 +106,7 @@ pub struct TcpInfo {
 
 
 #[cfg(target_os = "linux")]
-pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
+pub fn get_tcp_rtt(raw_fd: i32) -> (f32, f32) {
     let mut tcp_info = TcpInfo::default();
     let mut tcp_info_len = std::mem::size_of::<TcpInfo>() as u32;
 
@@ -120,11 +120,11 @@ pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
         )
     };
 
-    (tcp_info.tcpi_rtt, tcp_info.tcpi_rttvar)
+    (tcp_info.tcpi_rtt/1000, tcp_info.tcpi_rttvar/1000)
 }
 
 #[cfg(target_os = "macos")]
-pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
+pub fn get_tcp_rtt(raw_fd: i32) -> (f32, f32) {
     let mut tcp_info_len = std::mem::size_of::<libc::tcp_connection_info> as u32;
     let mut tcp_info=
         unsafe {
@@ -144,6 +144,6 @@ pub fn get_tcp_rtt(raw_fd: i32) -> (u32, u32) {
         &*tcp_info
     };
 
-    (tcp_info.tcpi_srtt, tcp_info.tcpi_rttvar)
+    (tcp_info.tcpi_srtt as f32, tcp_info.tcpi_rttvar as f32)
 }
 
